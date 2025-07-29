@@ -1,5 +1,5 @@
 [build]
-  command = "composer install --no-dev"
+  command = "composer install --no-dev && php artisan config:clear"
   publish = "public"
 
 [build.environment]
