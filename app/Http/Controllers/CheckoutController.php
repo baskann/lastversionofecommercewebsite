@@ -6,9 +6,12 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Services\IyzicoService;
+use App\Mail\OrderConfirmation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class CheckoutController extends Controller
 {
@@ -29,20 +32,21 @@ class CheckoutController extends Controller
         }
 
         $total = $this->calculateTotal($cart);
+        $taxRate = config('ecommerce.tax_rate', 0.18);
 
-        return view('checkout.index', compact('cart', 'total'));
+        return view('checkout.index', compact('cart', 'total', 'taxRate'));
     }
 
     public function process(Request $request)
     {
         $request->validate([
-            'customer_name' => 'required|string|max:255',
-            'customer_email' => 'required|email',
-            'customer_phone' => 'required|string',
-            'shipping_address' => 'required|string',
-            'city' => 'required|string',
-            'zip_code' => 'required|string',
-            'card_holder_name' => 'required|string',
+            'customer_name' => 'required|string|min:3|max:255',
+            'customer_email' => 'required|email|max:255',
+            'customer_phone' => ['required', 'string', 'regex:/^[0-9\s\-\+\(\)]{10,20}$/'],
+            'shipping_address' => 'required|string|min:10|max:500',
+            'city' => 'required|string|max:100',
+            'zip_code' => 'required|string|max:10',
+            'card_holder_name' => 'required|string|max:255',
             'card_number' => 'required|string|size:16',
             'expire_month' => 'required|string|size:2',
             'expire_year' => 'required|string|size:2',
@@ -56,19 +60,27 @@ class CheckoutController extends Controller
                            ->with('error', 'Sepetiniz boş!');
         }
 
+        // Stok kontrolü - Sipariş öncesi
+        $stockErrors = $this->checkStockAvailability($cart);
+        if (!empty($stockErrors)) {
+            return redirect()->route('cart.index')
+                           ->with('error', 'Bazı ürünlerde stok yetersiz: ' . implode(', ', $stockErrors));
+        }
+
         DB::beginTransaction();
 
         try {
-            // Sipariş oluştur
+            // Sipariş oluştur (stok henüz düşmedi)
             $order = $this->createOrder($request, $cart);
 
             // Test için ödemeyi başarılı kabul et
+            // NOT: Gerçek üretimde burayı İyzico entegrasyonu ile değiştirin
             $order->update([
                 'payment_status' => 'paid',
                 'payment_transaction_id' => 'TEST-' . time(),
             ]);
 
-            // Stok güncelle
+            // Ödeme başarılı olduktan SONRA stok güncelle
             $this->updateStock($cart);
 
             // Sepeti temizle
@@ -76,15 +88,48 @@ class CheckoutController extends Controller
 
             DB::commit();
 
+            // Loglama
+            Log::info('Order completed successfully', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'customer_email' => $order->customer_email,
+                'total_amount' => $order->total_amount,
+            ]);
+
+            // Email gönder
+            try {
+                $order->load('items'); // İlişkileri yükle
+                Mail::to($order->customer_email)->send(new OrderConfirmation($order));
+
+                Log::info('Order confirmation email sent', [
+                    'order_id' => $order->id,
+                    'email' => $order->customer_email,
+                ]);
+            } catch (\Exception $e) {
+                // Email gönderilemezse loglayalım ama işleme devam edelim
+                Log::error('Failed to send order confirmation email', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             return redirect()->route('checkout.success', $order)
                            ->with('success', 'Ödeme başarıyla tamamlandı!');
 
         } catch (\Exception $e) {
             DB::rollback();
 
+            // Detaylı hata logla ama kullanıcıya genel mesaj göster
+            Log::error('Checkout failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'cart' => $cart,
+                'customer_email' => $request->customer_email,
+            ]);
+
             return redirect()->back()
-                           ->with('error', 'Bir hata oluştu: ' . $e->getMessage())
-                           ->withInput();
+                           ->with('error', 'Ödeme işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.')
+                           ->withInput($request->except(['card_number', 'cvc', 'expire_month', 'expire_year']));
         }
     }
 
@@ -100,7 +145,8 @@ class CheckoutController extends Controller
     private function createOrder(Request $request, array $cart)
     {
         $subtotal = $this->calculateTotal($cart);
-        $taxAmount = $subtotal * 0.18; // %18 KDV
+        $taxRate = config('ecommerce.tax_rate', 0.18);
+        $taxAmount = $subtotal * $taxRate;
         $total = $subtotal + $taxAmount;
 
         $order = Order::create([
@@ -145,5 +191,33 @@ class CheckoutController extends Controller
             Product::where('id', $item['id'])
                    ->decrement('stock_quantity', $item['quantity']);
         }
+    }
+
+    /**
+     * Sepetteki ürünlerin stok durumunu kontrol et
+     */
+    private function checkStockAvailability(array $cart)
+    {
+        $errors = [];
+
+        foreach ($cart as $item) {
+            $product = Product::find($item['id']);
+
+            if (!$product) {
+                $errors[] = $item['name'] . ' bulunamadı';
+                continue;
+            }
+
+            if (!$product->is_active) {
+                $errors[] = $item['name'] . ' artık satışta değil';
+                continue;
+            }
+
+            if ($product->stock_quantity < $item['quantity']) {
+                $errors[] = $item['name'] . ' (Stok: ' . $product->stock_quantity . ', İstenen: ' . $item['quantity'] . ')';
+            }
+        }
+
+        return $errors;
     }
 }

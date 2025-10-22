@@ -10,19 +10,31 @@ class ProductController extends Controller
 {
     public function index(Request $request)
     {
+        // Search ve category parametrelerini validate et
+        $request->validate([
+            'search' => 'nullable|string|max:255|min:1',
+            'category' => 'nullable|string|max:255',
+        ]);
+
+        $perPage = config('ecommerce.products_per_page', 12);
         $query = Product::where('is_active', true)->with('category');
 
-        if ($request->has('category')) {
+        if ($request->filled('category')) {
             $query->whereHas('category', function($q) use ($request) {
                 $q->where('slug', $request->category);
             });
         }
 
-        if ($request->has('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%');
+        if ($request->filled('search')) {
+            $searchTerm = $request->search;
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('name', 'like', '%' . $searchTerm . '%')
+                  ->orWhere('description', 'like', '%' . $searchTerm . '%')
+                  ->orWhere('short_description', 'like', '%' . $searchTerm . '%');
+            });
         }
 
-        $products = $query->paginate(12);
+        $products = $query->paginate($perPage);
         $categories = Category::where('is_active', true)->get();
 
         return view('products.index', compact('products', 'categories'));

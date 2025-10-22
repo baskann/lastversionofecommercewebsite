@@ -29,6 +29,13 @@ class Order extends Model
 
     public static function generateOrderNumber()
     {
-        return 'ORD-' . date('Y') . '-' . str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
+        // Benzersiz sipariş numarası oluştur
+        do {
+            $number = config('ecommerce.order_number_prefix', 'ORD') . '-'
+                    . date('Ymd') . '-'
+                    . str_pad(random_int(100000, 999999), 6, '0', STR_PAD_LEFT);
+        } while (self::where('order_number', $number)->exists());
+
+        return $number;
     }
 }

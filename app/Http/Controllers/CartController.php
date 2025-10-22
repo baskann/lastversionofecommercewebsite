@@ -12,7 +12,8 @@ class CartController extends Controller
     {
         $cart = $this->getCart();
         $total = $this->getCartTotal();
-        return view('cart.index', compact('cart', 'total'));
+        $taxRate = config('ecommerce.tax_rate', 0.18);
+        return view('cart.index', compact('cart', 'total', 'taxRate'));
     }
 
     public function add(Request $request, Product $product)
@@ -48,12 +49,19 @@ class CartController extends Controller
     public function update(Request $request, $productId)
     {
         $request->validate([
-            'quantity' => 'required|integer|min:1'
+            'quantity' => 'required|integer|min:1|max:999'
         ]);
 
         $cart = $this->getCart();
 
         if (isset($cart[$productId])) {
+            // Stok kontrolü
+            $product = Product::findOrFail($productId);
+
+            if ($request->quantity > $product->stock_quantity) {
+                return redirect()->back()->with('error', 'Yetersiz stok! Maksimum ' . $product->stock_quantity . ' adet sipariş verebilirsiniz.');
+            }
+
             $cart[$productId]['quantity'] = $request->quantity;
             Session::put('cart', $cart);
         }

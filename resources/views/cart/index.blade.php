@@ -80,15 +80,15 @@
                         </div>
 
                         <div class="d-flex justify-content-between mb-2">
-                            <span>KDV (%18):</span>
-                            <span>{{ number_format($total * 0.18, 2) }} TL</span>
+                            <span>KDV (%{{ $taxRate * 100 }}):</span>
+                            <span>{{ number_format($total * $taxRate, 2) }} TL</span>
                         </div>
 
                         <hr>
 
                         <div class="d-flex justify-content-between mb-3">
                             <strong>Toplam:</strong>
-                            <strong>{{ number_format($total * 1.18, 2) }} TL</strong>
+                            <strong>{{ number_format($total * (1 + $taxRate), 2) }} TL</strong>
                         </div>
 
                         <div class="d-grid gap-2">

@@ -13,8 +13,9 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot()
     {
-        // View'larda kullanmak için global değişken
-        view()->composer('*', function ($view) {
+        // View'larda kullanmak için sepet sayacı
+        // Performans için sadece layout'a uygula
+        view()->composer('layouts.app', function ($view) {
             $cartCount = 0;
             if (session()->has('cart')) {
                 $cart = session('cart');

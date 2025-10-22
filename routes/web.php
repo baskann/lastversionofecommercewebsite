@@ -27,8 +27,11 @@ Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout.in
 Route::post('/checkout', [CheckoutController::class, 'process'])->name('checkout.process');
 Route::get('/checkout/success/{order}', [CheckoutController::class, 'success'])->name('checkout.success');
 
-// Admin paneli
-Route::prefix('admin')->name('admin.')->group(function () {
+// Kimlik doğrulama rotaları (Laravel UI)
+Auth::routes();
+
+// Admin paneli (Sadece giriş yapmış kullanıcılar erişebilir)
+Route::prefix('admin')->middleware(['auth'])->name('admin.')->group(function () {
     Route::get('/', [AdminController::class, 'dashboard'])->name('dashboard');
 
     // Ürün yönetimi

@@ -125,10 +125,23 @@
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-success btn-lg w-100">
-                            {{ number_format($total * 1.18, 2) }} TL Öde
+                        <button type="submit" class="btn btn-success btn-lg w-100" id="submitBtn">
+                            <span id="btnText">{{ number_format($total * (1 + $taxRate), 2) }} TL Öde</span>
+                            <span id="spinner" style="display: none;">
+                                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                İşleniyor...
+                            </span>
                         </button>
                     </form>
+
+                    <script>
+                    document.querySelector('form').addEventListener('submit', function() {
+                        const btn = document.getElementById('submitBtn');
+                        btn.disabled = true;
+                        document.getElementById('btnText').style.display = 'none';
+                        document.getElementById('spinner').style.display = 'inline';
+                    });
+                    </script>
                 </div>
             </div>
         </div>
@@ -154,15 +167,15 @@
                     </div>
 
                     <div class="d-flex justify-content-between">
-                        <span>KDV (%18):</span>
-                        <span>{{ number_format($total * 0.18, 2) }} TL</span>
+                        <span>KDV (%{{ $taxRate * 100 }}):</span>
+                        <span>{{ number_format($total * $taxRate, 2) }} TL</span>
                     </div>
 
                     <hr>
 
                     <div class="d-flex justify-content-between fw-bold">
                         <span>Toplam:</span>
-                        <span>{{ number_format($total * 1.18, 2) }} TL</span>
+                        <span>{{ number_format($total * (1 + $taxRate), 2) }} TL</span>
                     </div>
                 </div>
             </div>
